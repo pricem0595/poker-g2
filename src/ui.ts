@@ -144,9 +144,19 @@ export function render(state: State): string {
   }
 }
 
+/**
+ * Eight lines maximum. Roughly ten fit on the 288px display, and by the turn
+ * this screen carries the most content of any - table, board, equity, made
+ * hand, outs and the range it was all computed against. The usage hint is one
+ * row, not two, which is what bought the headroom.
+ */
 function renderResult(state: State): string {
   const equity = state.equity
-  const lines: string[] = [tableLine(state)]
+  const lines: string[] = []
+
+  // Range lives on the table line so the number is always attributed without
+  // costing a row of its own.
+  lines.push(`${tableLine(state)} · ${describeRange(state.tightness, state.board.length)}`)
 
   const board = boardLine(state)
   if (board) lines.push(board)
@@ -167,15 +177,12 @@ function renderResult(state: State): string {
   const toCome = cardsToCome(state.board)
   if (state.outs > 0 && toCome > 0 && state.board.length >= 3) {
     const approx = ruleOf4And2(state.outs, toCome)
-    const by = toCome >= 2 ? 'by river' : 'on river'
-    lines.push('')
-    lines.push(`${state.outs} outs · ~${approx}% ${by} (approx)`)
+    lines.push(`${state.outs} outs · ~${approx}% by ${toCome >= 2 ? 'river' : 'the river'}`)
   }
 
-  lines.push(describeRange(state.tightness, state.board.length))
   lines.push('')
-  lines.push('scroll: players still in')
-  lines.push(state.street === 'river' ? 'click for a new hand' : `click for the ${nextLabel(state)}`)
+  const next = state.street === 'river' ? 'new hand' : nextLabel(state)
+  lines.push(`scroll players · click ${next}`)
   return lines.join('\n')
 }
 
@@ -192,11 +199,24 @@ function nextLabel(state: State): string {
   }
 }
 
-/** Guard against overrunning the display. */
+/**
+ * Guard against overrunning the display.
+ *
+ * The binding constraint is LINES, not characters. An 11-line turn readout
+ * overflowed at about 150 characters, so the old 400-character check never
+ * fired and the last row was silently cut off with a scrollbar. About ten rows
+ * fit; nine leaves room for a long line wrapping.
+ */
+export const MAX_SCREEN_LINES = 9
 export const MAX_SCREEN_CHARS = 400
 
 export function isOversized(text: string): boolean {
-  return text.length > MAX_SCREEN_CHARS
+  return text.split('\n').length > MAX_SCREEN_LINES || text.length > MAX_SCREEN_CHARS
+}
+
+/** Longest screen this state can produce, for tests. */
+export function lineCount(text: string): number {
+  return text.split('\n').length
 }
 
 export { selectedOption }

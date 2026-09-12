@@ -26,6 +26,11 @@ export interface State {
    */
   live: number
   /**
+   * Ceiling for `live` this round. Players cannot re-enter after folding, so
+   * advancing a street locks in whatever count was showing as the new maximum.
+   */
+  liveMax: number
+  /**
    * How loose the opponents are. Shown at the start of every hand so it can be
    * re-read as the table changes, rather than fixed once at setup.
    */
@@ -49,6 +54,7 @@ export function initialState(players: number | null, tightness: Tightness = 'nor
     street: 'hole',
     players: players ?? 6,
     live: players ?? 6,
+    liveMax: players ?? 6,
     tightness,
     hole: [],
     board: [],
@@ -69,7 +75,8 @@ export function opponentsOf(state: State): number {
 }
 
 function clampLive(state: State, n: number): number {
-  return Math.min(clampPlayers(state.players), Math.max(MIN_PLAYERS, n))
+  const ceiling = Math.min(clampPlayers(state.players), state.liveMax)
+  return Math.min(ceiling, Math.max(MIN_PLAYERS, n))
 }
 
 /**
@@ -180,7 +187,10 @@ export function click(state: State): State {
     case 'setup': {
       const players = selectedOption(state)
       const cursor = TIGHTNESS_ORDER.indexOf(state.tightness)
-      return { ...state, players, live: players, phase: 'style', cursor: Math.max(0, cursor) }
+      return {
+        ...state, players, live: players, liveMax: players,
+        phase: 'style', cursor: Math.max(0, cursor),
+      }
     }
 
     case 'style': {
@@ -207,7 +217,12 @@ export function click(state: State): State {
     case 'result': {
       const following = nextStreet(state.street)
       if (following === null) return newHand(state)
-      return { ...state, street: following, phase: 'suit', cursor: 0, equity: null, outs: 0 }
+      // Folded players are gone for good, so this street's count becomes the
+      // ceiling for every street after it.
+      return {
+        ...state, street: following, liveMax: state.live,
+        phase: 'suit', cursor: 0, equity: null, outs: 0,
+      }
     }
   }
 }
@@ -217,6 +232,7 @@ export function newHand(state: State): State {
   return {
     ...initialState(state.players, state.tightness),
     players: state.players,
+    liveMax: state.players,
     cursor: Math.max(0, TIGHTNESS_ORDER.indexOf(state.tightness)),
   }
 }
