@@ -6,8 +6,9 @@
 
 import { DECK_SIZE, RANK_COUNT, SUIT_COUNT, makeCard, rankOf, suitOf } from './cards.ts'
 import type { Equity } from './equity.ts'
+import { TIGHTNESS_ORDER, type Tightness } from './ranges.ts'
 
-export type Phase = 'setup' | 'suit' | 'rank' | 'computing' | 'result'
+export type Phase = 'setup' | 'style' | 'suit' | 'rank' | 'computing' | 'result'
 export type Street = 'hole' | 'flop' | 'turn' | 'river'
 
 export const MIN_PLAYERS = 2
@@ -24,6 +25,11 @@ export interface State {
    * against one - so this is adjustable on every result screen.
    */
   live: number
+  /**
+   * How loose the opponents are. Shown at the start of every hand so it can be
+   * re-read as the table changes, rather than fixed once at setup.
+   */
+  tightness: Tightness
   hole: number[]
   board: number[]
   /** Index into the current option list. */
@@ -36,12 +42,14 @@ export interface State {
   progress: number
 }
 
-export function initialState(players: number | null): State {
+export function initialState(players: number | null, tightness: Tightness = 'normal'): State {
   return {
-    phase: players === null ? 'setup' : 'suit',
+    // Every hand opens on the style screen; only a first boot needs the seat count.
+    phase: players === null ? 'setup' : 'style',
     street: 'hole',
     players: players ?? 6,
     live: players ?? 6,
+    tightness,
     hole: [],
     board: [],
     cursor: players === null ? clampPlayers(6) - MIN_PLAYERS : 0,
@@ -92,6 +100,9 @@ export function optionsFor(state: State): number[] {
       for (let p = MIN_PLAYERS; p <= MAX_PLAYERS; p++) out.push(p)
       return out
     }
+    case 'style':
+      return TIGHTNESS_ORDER.map((_, index) => index)
+
     case 'suit': {
       const used = usedCards(state)
       const out: number[] = []
@@ -168,7 +179,13 @@ export function click(state: State): State {
   switch (state.phase) {
     case 'setup': {
       const players = selectedOption(state)
-      return { ...state, players, live: players, phase: 'suit', cursor: 0 }
+      const cursor = TIGHTNESS_ORDER.indexOf(state.tightness)
+      return { ...state, players, live: players, phase: 'style', cursor: Math.max(0, cursor) }
+    }
+
+    case 'style': {
+      const tightness = TIGHTNESS_ORDER[selectedOption(state)] ?? state.tightness
+      return { ...state, tightness, phase: 'suit', cursor: 0 }
     }
 
     case 'suit':
@@ -195,11 +212,12 @@ export function click(state: State): State {
   }
 }
 
-/** Fresh hand, same table. */
+/** Fresh hand, same table. Opens on the style screen so it can be re-read. */
 export function newHand(state: State): State {
   return {
-    ...initialState(state.players),
+    ...initialState(state.players, state.tightness),
     players: state.players,
+    cursor: Math.max(0, TIGHTNESS_ORDER.indexOf(state.tightness)),
   }
 }
 

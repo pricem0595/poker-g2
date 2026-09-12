@@ -8,6 +8,7 @@ import {
 
 import { makeRng } from './cards.ts'
 import { DEFAULT_TRIALS, countOuts, createSimulation } from './equity.ts'
+import { TIGHTNESS_ORDER, opponentPool, type Tightness } from './ranges.ts'
 import {
   type State,
   MAX_PLAYERS,
@@ -24,6 +25,7 @@ import { isOversized, render } from './ui.ts'
 const CONTAINER_ID = 1
 const CONTAINER_NAME = 'poker'
 const PLAYERS_KEY = 'poker.players'
+const STYLE_KEY = 'poker.style'
 
 // A single flaky BLE hop can hang for ~30s. Cap every call.
 const BLE_TIMEOUT_MS = 5000
@@ -98,7 +100,7 @@ function yieldToUi(): Promise<void> {
  * number. A percentage that flickers between glances reads as broken.
  */
 function seedFor(s: State): number {
-  let seed = s.players * 31
+  let seed = s.players * 31 + TIGHTNESS_ORDER.indexOf(s.tightness) * 101
   for (const card of [...s.hole, ...s.board]) seed = (seed * 33 + card + 7) >>> 0
   return seed || 1
 }
@@ -114,12 +116,17 @@ async function runSimulation(): Promise<void> {
   const opponents = opponentsOf(state)
   const seed = seedFor(state)
 
+  // 'any' leaves the pool undefined, which keeps the validated random-hand path.
+  const pool =
+    state.tightness === 'any' ? undefined : opponentPool(state.tightness, state.hole, state.board)
+
   const sim = createSimulation({
     hole: state.hole,
     board: state.board,
     opponents,
     trials: DEFAULT_TRIALS,
     rng: makeRng(seed),
+    pool,
   })
 
   while (!sim.done) {
@@ -159,7 +166,11 @@ const savedPlayers = await bridgeCall('getLocalStorage', () => bridge.getLocalSt
 const parsed = Number.parseInt(String(savedPlayers ?? ''), 10)
 const knownPlayers =
   Number.isFinite(parsed) && parsed >= MIN_PLAYERS && parsed <= MAX_PLAYERS ? parsed : null
-state = initialState(knownPlayers)
+const savedStyle = await bridgeCall('getLocalStorage', () => bridge.getLocalStorage(STYLE_KEY))
+const knownStyle = TIGHTNESS_ORDER.includes(String(savedStyle ?? '') as Tightness)
+  ? (String(savedStyle) as Tightness)
+  : 'normal'
+state = initialState(knownPlayers, knownStyle)
 
 const page = new TextContainerProperty({
   xPosition: 0,
@@ -230,12 +241,12 @@ const unsubscribe = bridge.onEvenHubEvent((event) => {
       return
 
     case OsEventTypeList.CLICK_EVENT: {
-      const wasSetup = state.phase === 'setup'
+      const before = state.phase
       advance(click(state))
-      if (wasSetup) {
-        bridgeCall('setLocalStorage', () =>
-          bridge.setLocalStorage(PLAYERS_KEY, String(state.players)),
-        )
+      if (before === 'setup') {
+        bridgeCall('setLocalStorage', () => bridge.setLocalStorage(PLAYERS_KEY, String(state.players)))
+      } else if (before === 'style') {
+        bridgeCall('setLocalStorage', () => bridge.setLocalStorage(STYLE_KEY, state.tightness))
       }
       return
     }

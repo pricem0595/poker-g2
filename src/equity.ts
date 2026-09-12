@@ -5,6 +5,7 @@
 // and the one this app's numbers are validated against.
 
 import { DECK_SIZE, remainingDeck } from './cards.ts'
+import type { Combo } from './ranges.ts'
 import { evaluate } from './evaluator.ts'
 
 export interface Equity {
@@ -21,6 +22,12 @@ export interface SimulationInput {
   opponents: number // 1..9
   trials: number
   rng: () => number
+  /**
+   * Hands opponents may hold. Omit for uniformly random holdings - that is the
+   * assumption behind every published equity table and behind this project's
+   * conformance tests, so it stays the default and must not be removed.
+   */
+  pool?: readonly Combo[]
 }
 
 /**
@@ -60,7 +67,14 @@ export function createSimulation(input: SimulationInput) {
   let losses = 0
   let done = 0
 
-  function playOne() {
+  const pool = input.pool
+  const taken = new Uint8Array(DECK_SIZE)
+  // A tight range against many opponents produces frequent card collisions;
+  // give up on a trial rather than spin forever, and count how often.
+  const MAX_DRAW_ATTEMPTS = 200
+  let abandoned = 0
+
+  function playOne(): boolean {
     // Partial Fisher-Yates: shuffling only the first `draws` slots of a
     // persistent deck still yields a uniform random sample each trial.
     for (let i = 0; i < draws; i++) {
@@ -78,17 +92,50 @@ export function createSimulation(input: SimulationInput) {
     const heroScore = evaluate(seven)
 
     let bestOpponent = -1
-    let cursor = boardToCome
-    for (let o = 0; o < opponents; o++) {
-      seven[0] = deck[cursor++]
-      seven[1] = deck[cursor++]
-      const s = evaluate(seven)
-      if (s > bestOpponent) bestOpponent = s
+
+    if (pool === undefined) {
+      // Uniform holdings: take the next cards off the shuffled deck.
+      let cursor = boardToCome
+      for (let o = 0; o < opponents; o++) {
+        seven[0] = deck[cursor++]
+        seven[1] = deck[cursor++]
+        const s = evaluate(seven)
+        if (s > bestOpponent) bestOpponent = s
+      }
+    } else {
+      // Ranged holdings: draw from the pool, rejecting any combo that uses a
+      // card already visible or held by another opponent this trial.
+      taken.fill(0)
+      taken[hole[0]] = 1
+      taken[hole[1]] = 1
+      for (let i = 0; i < 5; i++) taken[fullBoard[i]] = 1
+
+      for (let o = 0; o < opponents; o++) {
+        let picked: Combo | undefined
+        for (let attempt = 0; attempt < MAX_DRAW_ATTEMPTS; attempt++) {
+          const candidate = pool[Math.floor(rng() * pool.length)]
+          if (taken[candidate[0]] === 0 && taken[candidate[1]] === 0) {
+            picked = candidate
+            break
+          }
+        }
+        if (picked === undefined) {
+          abandoned++
+          return false
+        }
+        taken[picked[0]] = 1
+        taken[picked[1]] = 1
+        seven[0] = picked[0]
+        seven[1] = picked[1]
+        const s = evaluate(seven)
+        if (s > bestOpponent) bestOpponent = s
+      }
     }
 
     if (heroScore > bestOpponent) wins++
     else if (heroScore === bestOpponent) ties++
     else losses++
+    return true
   }
 
   return {
@@ -106,9 +153,16 @@ export function createSimulation(input: SimulationInput) {
         done++
       }
     },
+    /** Trials thrown away because no legal opponent hand could be drawn. */
+    get abandoned() {
+      return abandoned
+    },
     result(): Equity {
-      const t = done || 1
-      return { win: wins / t, tie: ties / t, lose: losses / t, trials: done }
+      // Abandoned trials are excluded from the denominator rather than counted
+      // as losses, which would bias the result downward.
+      const counted = wins + ties + losses
+      const t = counted || 1
+      return { win: wins / t, tie: ties / t, lose: losses / t, trials: counted }
     },
   }
 }

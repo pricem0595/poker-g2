@@ -11,6 +11,7 @@
 import { RANK_LABELS, SUIT_LABELS, formatCard } from './cards.ts'
 import { describeHand } from './evaluator.ts'
 import { cardsToCome, ruleOf4And2 } from './equity.ts'
+import { TIGHTNESS, TIGHTNESS_ORDER, describeRange } from './ranges.ts'
 import {
   type State,
   boardTarget,
@@ -76,6 +77,19 @@ export function render(state: State): string {
         inlineOptions(optionsFor(state).map(String), state.cursor),
         '',
         FOOTER,
+      ].join('\n')
+
+    case 'style':
+      return [
+        `${state.players} players`,
+        '',
+        'How do they play?',
+        '',
+        inlineOptions(TIGHTNESS_ORDER.map((t) => TIGHTNESS[t].label), state.cursor),
+        '',
+        `${TIGHTNESS[TIGHTNESS_ORDER[state.cursor] ?? 'normal'].pct}% of hands played`,
+        '',
+        'scroll · click to deal',
       ].join('\n')
 
     case 'suit': {
@@ -158,6 +172,7 @@ function renderResult(state: State): string {
     lines.push(`${state.outs} outs · ~${approx}% ${by} (approx)`)
   }
 
+  lines.push(describeRange(state.tightness, state.board.length))
   lines.push('')
   lines.push('scroll: players still in')
   lines.push(state.street === 'river' ? 'click for a new hand' : `click for the ${nextLabel(state)}`)
