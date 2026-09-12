@@ -12,6 +12,7 @@ import {
   type State,
   MAX_PLAYERS,
   MIN_PLAYERS,
+  adjustLive,
   click,
   initialState,
   opponentsOf,
@@ -102,37 +103,43 @@ function seedFor(s: State): number {
   return seed || 1
 }
 
-let simulating = false
+// Adjusting the live player count restarts the simulation, and scrolling can
+// do that faster than a run completes. Each run takes a token; a newer run
+// supersedes an older one rather than the older one being dropped, so the
+// displayed number always reflects the latest count.
+let generation = 0
 
 async function runSimulation(): Promise<void> {
-  if (simulating) return
-  simulating = true
-  try {
-    const opponents = opponentsOf(state)
-    const sim = createSimulation({
-      hole: state.hole,
-      board: state.board,
-      opponents,
-      trials: DEFAULT_TRIALS,
-      rng: makeRng(seedFor(state)),
-    })
+  const mine = ++generation
+  const opponents = opponentsOf(state)
+  const seed = seedFor(state)
 
-    while (!sim.done) {
-      sim.step(CHUNK_TRIALS)
-      state.progress = sim.progress
-      await paint()
-      await yieldToUi()
-    }
+  const sim = createSimulation({
+    hole: state.hole,
+    board: state.board,
+    opponents,
+    trials: DEFAULT_TRIALS,
+    rng: makeRng(seed),
+  })
 
-    state.equity = sim.result()
-    // Outs are only meaningful with a board and cards still to come; findOuts
-    // returns nothing otherwise, so this is cheap on the preflop and river.
-    state.outs = countOuts(state.hole, state.board, opponents, makeRng(seedFor(state) ^ 0x5bf03635))
-    state.phase = 'result'
+  while (!sim.done) {
+    if (mine !== generation) return
+    sim.step(CHUNK_TRIALS)
+    state.progress = sim.progress
     await paint()
-  } finally {
-    simulating = false
+    await yieldToUi()
   }
+
+  if (mine !== generation) return
+
+  state.equity = sim.result()
+  // Outs are only meaningful with a board and cards still to come; findOuts
+  // returns nothing otherwise, so this is cheap on the preflop and river.
+  state.outs = countOuts(state.hole, state.board, opponents, makeRng(seed ^ 0x5bf03635))
+
+  if (mine !== generation) return
+  state.phase = 'result'
+  await paint()
 }
 
 function advance(next: State): void {
@@ -194,8 +201,17 @@ const unsubscribe = bridge.onEvenHubEvent((event) => {
   // clicks and every lifecycle event arrive on sysEvent - never the reverse.
   if (event.textEvent) {
     const type = event.textEvent.eventType ?? 0
-    if (type === OsEventTypeList.SCROLL_TOP_EVENT) advance(scroll(state, -1))
-    else if (type === OsEventTypeList.SCROLL_BOTTOM_EVENT) advance(scroll(state, 1))
+    const delta =
+      type === OsEventTypeList.SCROLL_TOP_EVENT
+        ? -1
+        : type === OsEventTypeList.SCROLL_BOTTOM_EVENT
+          ? 1
+          : 0
+    if (delta === 0) return
+    // On a result screen scroll has no list to move, so it adjusts how many
+    // players are still in the hand - the largest single influence on equity.
+    // Direction matches the setup picker: up counts down toward heads-up.
+    advance(state.phase === 'result' ? adjustLive(state, delta) : scroll(state, delta))
     return
   }
 

@@ -30,7 +30,12 @@ function inlineOptions(labels: string[], selectedIndex: number): string {
 }
 
 function tableLine(state: State): string {
-  const players = `${state.players} players`
+  // Once anyone has folded, the live count is the number that matters, so say
+  // both rather than quietly showing a figure computed against a stale table.
+  const players =
+    state.live < state.players
+      ? `${state.live} of ${state.players} live`
+      : `${state.players} players`
   if (state.hole.length === 0) return players
   return `${state.hole.map(formatCard).join(' ')}  ·  ${players}`
 }
@@ -154,6 +159,7 @@ function renderResult(state: State): string {
   }
 
   lines.push('')
+  lines.push('scroll: players still in')
   lines.push(state.street === 'river' ? 'click for a new hand' : `click for the ${nextLabel(state)}`)
   return lines.join('\n')
 }

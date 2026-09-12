@@ -16,7 +16,14 @@ export const MAX_PLAYERS = 10
 export interface State {
   phase: Phase
   street: Street
+  /** Seats at the table, set once and remembered. */
   players: number
+  /**
+   * Players still in the hand, including you. Folding is the single biggest
+   * swing in equity - pocket fives are 12% against nine opponents and 59%
+   * against one - so this is adjustable on every result screen.
+   */
+  live: number
   hole: number[]
   board: number[]
   /** Index into the current option list. */
@@ -34,6 +41,7 @@ export function initialState(players: number | null): State {
     phase: players === null ? 'setup' : 'suit',
     street: 'hole',
     players: players ?? 6,
+    live: players ?? 6,
     hole: [],
     board: [],
     cursor: players === null ? clampPlayers(6) - MIN_PLAYERS : 0,
@@ -49,7 +57,23 @@ function clampPlayers(n: number): number {
 }
 
 export function opponentsOf(state: State): number {
-  return clampPlayers(state.players) - 1
+  return clampLive(state, state.live) - 1
+}
+
+function clampLive(state: State, n: number): number {
+  return Math.min(clampPlayers(state.players), Math.max(MIN_PLAYERS, n))
+}
+
+/**
+ * Adjust how many players are still in, from the result screen. Scroll does
+ * nothing there otherwise, so this costs no extra gesture and no extra screen.
+ * Changing it re-runs the simulation.
+ */
+export function adjustLive(state: State, delta: number): State {
+  if (state.phase !== 'result') return state
+  const live = clampLive(state, state.live + delta)
+  if (live === state.live) return state
+  return { ...state, live, phase: 'computing', progress: 0, equity: null, outs: 0 }
 }
 
 /** Every card already committed this hand. */
@@ -144,7 +168,7 @@ export function click(state: State): State {
   switch (state.phase) {
     case 'setup': {
       const players = selectedOption(state)
-      return { ...state, players, phase: 'suit', cursor: 0 }
+      return { ...state, players, live: players, phase: 'suit', cursor: 0 }
     }
 
     case 'suit':
