@@ -100,6 +100,30 @@ const fresh = click({ ...afterFlop, phase: 'result', street: 'river' })
 expect('a new hand restores the ceiling', fresh.liveMax, 8)
 expect('a new hand restores the live count', fresh.live, 8)
 
+// ---------------------------------------------------------------------------
+console.log('\nOuts only show when behind\n')
+
+// Outs answer "how likely am I to catch up". Once you are already the
+// favourite the question is meaningless, and "25 outs · ~50%" printed under
+// "WIN 74%" reads as a contradiction.
+const chasing: State = {
+  ...base,
+  street: 'flop',
+  board: flop,
+  outs: 9,
+  equity: { win: 0.34, tie: 0.01, lose: 0.65, trials: 25000 },
+}
+const ahead: State = { ...chasing, equity: { win: 0.74, tie: 0.02, lose: 0.24, trials: 25000 } }
+const borderline: State = { ...chasing, equity: { win: 0.5, tie: 0, lose: 0.5, trials: 25000 } }
+
+expect('outs show when behind', render(chasing).includes('9 outs'), true)
+expect('outs hidden when ahead', render(ahead).includes('outs'), false)
+expect('the win line survives when ahead', render(ahead).includes('WIN 74%'), true)
+expect('exactly even counts as ahead', render(borderline).includes('outs'), false)
+
+fits('flop result while chasing', chasing)
+fits('flop result while ahead', ahead)
+
 console.log()
 if (failures > 0) {
   console.error(`${failures} check(s) FAILED`)

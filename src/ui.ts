@@ -22,6 +22,9 @@ import {
 
 const FOOTER = 'scroll · click · dbl-tap exits'
 
+/** At or above this win rate you are the favourite, so outs stop being useful. */
+const AHEAD_THRESHOLD = 0.5
+
 /** Render a list of labels with the current one bracketed. */
 function inlineOptions(labels: string[], selectedIndex: number): string {
   return labels
@@ -174,8 +177,13 @@ function renderResult(state: State): string {
     lines.push(describeHand([...state.hole, ...state.board]))
   }
 
+  // Outs are a CHASING number - how likely you are to catch up. Once you are
+  // already the favourite you are not chasing, and showing "25 outs · ~50%"
+  // under "WIN 74%" reads as a contradiction even though both are correct by
+  // their own definition. So it is hidden when ahead.
   const toCome = cardsToCome(state.board)
-  if (state.outs > 0 && toCome > 0 && state.board.length >= 3) {
+  const behind = !equity || equity.win < AHEAD_THRESHOLD
+  if (behind && state.outs > 0 && toCome > 0 && state.board.length >= 3) {
     const approx = ruleOf4And2(state.outs, toCome)
     lines.push(`${state.outs} outs · ~${approx}% by ${toCome >= 2 ? 'river' : 'the river'}`)
   }
