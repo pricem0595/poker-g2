@@ -5,7 +5,7 @@
 // and the one this app's numbers are validated against.
 
 import { DECK_SIZE, remainingDeck } from './cards.ts'
-import { categoryOf, evaluate } from './evaluator.ts'
+import { evaluate } from './evaluator.ts'
 
 export interface Equity {
   /** Fractions in 0..1, summing to 1. */

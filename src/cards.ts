@@ -6,8 +6,16 @@
 
 export const RANK_LABELS = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'] as const
 
-// Suit glyphs are confirmed present in the G2 firmware font.
-export const SUIT_LABELS = ['♠', '♥', '♦', '♣'] as const // spade heart diamond club
+// Suit glyphs, VERIFIED ON SCREEN - not taken from the docs.
+//
+// U+2666 BLACK DIAMOND SUIT is NOT in the firmware font. It does not error, it
+// renders as nothing, so diamonds silently lost their suit and 2♦ displayed as
+// a bare "2". U+25C6 BLACK DIAMOND is present and is used instead.
+//
+// Spade, heart and club are all genuinely present. If a glyph is ever in doubt,
+// put it on screen and screenshot it - unsupported characters are skipped
+// silently, so nothing in the console will tell you.
+export const SUIT_LABELS = ['♠', '♥', '◆', '♣'] as const // spade heart diamond club
 
 export const RANK_COUNT = 13
 export const SUIT_COUNT = 4

@@ -12,7 +12,7 @@
 
 // Explicit .ts extension: Vite resolves extensionless imports, Node's ESM loader
 // does not, and the tests run under plain `node --experimental-strip-types`.
-import { RANK_COUNT, SUIT_COUNT } from './cards.ts'
+import { RANK_COUNT, RANK_LABELS, SUIT_COUNT } from './cards.ts'
 
 // A const object rather than an `enum`. The template sets `isolatedModules: true`
 // (no cross-file const-enum inlining), and Node's type-stripping mode rejects
@@ -164,6 +164,42 @@ export function evaluate(cards: readonly number[]): number {
   }
 
   return score(Category.HighCard, topRanks(rankMask, 5))
+}
+
+/** The i-th tiebreak rank packed into a score (0 = most significant). */
+export function tiebreakRank(score: number, index: number): number {
+  return (score >>> (16 - index * 4)) & 0xf
+}
+
+/**
+ * Short, rank-aware hand name for the readout. "Pair of A" beats a bare "Pair"
+ * when you are glancing at a HUD and already know you hold aces.
+ */
+export function describeHand(cards: readonly number[]): string {
+  const score = evaluate(cards)
+  const category = categoryOf(score)
+  const r = (i: number) => RANK_LABELS[tiebreakRank(score, i)]
+
+  switch (category) {
+    case Category.StraightFlush:
+      return `Straight flush to ${r(0)}`
+    case Category.Quads:
+      return `Quads, ${r(0)}`
+    case Category.FullHouse:
+      return `${r(0)} full of ${r(1)}`
+    case Category.Flush:
+      return `Flush, ${r(0)} high`
+    case Category.Straight:
+      return `Straight to ${r(0)}`
+    case Category.Trips:
+      return `Trips, ${r(0)}`
+    case Category.TwoPair:
+      return `Two pair, ${r(0)} & ${r(1)}`
+    case Category.Pair:
+      return `Pair of ${r(0)}`
+    default:
+      return `${r(0)} high`
+  }
 }
 
 export function describe(cards: readonly number[]): string {
