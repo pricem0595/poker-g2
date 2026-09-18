@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "pack": "npm run build && evenhub pack app.json dist",
     "simulate": "evenhub-simulator http://localhost:5173",
-    "test": "node --experimental-strip-types test/evaluator.test.ts && node --experimental-strip-types test/equity.test.ts && node --experimental-strip-types test/folding.test.ts && node --experimental-strip-types test/ranges.test.ts && node --experimental-strip-types test/layout.test.ts"
+    "test": "node --experimental-strip-types test/evaluator.test.ts && node --experimental-strip-types test/equity.test.ts && node --experimental-strip-types test/folding.test.ts && node --experimental-strip-types test/ranges.test.ts && node --experimental-strip-types test/layout.test.ts && node --experimental-strip-types test/nav.test.ts"
   },
   "dependencies": {
     "@evenrealities/even_hub_sdk": "0.0.14"

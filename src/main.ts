@@ -2,6 +2,7 @@ import {
   waitForEvenAppBridge,
   TextContainerProperty,
   CreateStartUpPageContainer,
+  RebuildPageContainer,
   TextContainerUpgrade,
   OsEventTypeList,
 } from '@evenrealities/even_hub_sdk'
@@ -21,6 +22,7 @@ import {
   scroll,
 } from './state.ts'
 import { isOversized, render } from './ui.ts'
+import { type Nav, back, forward, startNewRound } from './nav.ts'
 
 const CONTAINER_ID = 1
 const CONTAINER_NAME = 'poker'
@@ -149,15 +151,30 @@ async function runSimulation(): Promise<void> {
   await paint()
 }
 
-function advance(next: State): void {
+/** Screens left behind by clicks, newest last. Double-tap pops it. */
+let history: readonly State[] = []
+
+function advance(next: State, nextHistory: readonly State[] = history): void {
   const problem = sanityCheck(next)
   if (problem) {
     console.error(`[state] rejected transition: ${problem}`)
     return
   }
   state = next
-  if (state.phase === 'computing') void runSimulation()
-  else void paint()
+  history = nextHistory
+  if (state.phase === 'computing') {
+    void runSimulation()
+  } else {
+    // Leaving a simulation early (back, or a new round mid-run) must stop it,
+    // or it would finish later and write its result into whatever screen we
+    // moved to. runSimulation takes a fresh token on start; this retires it.
+    generation++
+    void paint()
+  }
+}
+
+function go(nav: Nav): void {
+  advance(nav.state, nav.history)
 }
 
 // ---------------------------------------------------------------------------
@@ -192,26 +209,60 @@ const CREATE_ERRORS: Record<number, string> = {
   3: 'out of memory',
 }
 
+// createStartUpPageContainer may only be called ONCE per page on the glasses -
+// but the page outlives this script. A hot reload or a re-scanned QR restarts
+// the JS while the old page is still showing, and the second create is refused
+// with code 1. So a failed create falls back to rebuilding the page in place.
+//
+// Never throw here. An earlier version bailed on a failed create, before the
+// input handler below was registered: the old screen stayed up and every
+// control went dead, on the glasses, with no visible error.
 const result = await bridge.createStartUpPageContainer(
   new CreateStartUpPageContainer({ containerTotalNum: 1, textObject: [page] }),
 )
 
-// Bail rather than register a handler against a container that does not exist.
-if (result !== 0) {
-  throw new Error(
-    `createStartUpPageContainer failed (${result}: ${CREATE_ERRORS[result] ?? 'unknown'})`,
+if (result === 0) {
+  console.log('Page created: success')
+} else {
+  console.warn(
+    `createStartUpPageContainer refused (${result}: ${CREATE_ERRORS[result] ?? 'unknown'}) - ` +
+      'the page probably survived a reload; rebuilding it instead',
   )
+  const rebuilt = await bridgeCall('rebuildPageContainer', () =>
+    bridge.rebuildPageContainer(
+      new RebuildPageContainer({ containerTotalNum: 1, textObject: [page] }),
+    ),
+  )
+  if (rebuilt) console.log('Page rebuilt: success')
+  else console.error('rebuildPageContainer failed too; registering input anyway')
 }
 
-console.log('Page created: success')
-
 // ---------------------------------------------------------------------------
+
+/**
+ * Long press starts a new round. Acts on the press itself, not the release, so
+ * the new hand appears while the finger is still down.
+ *
+ * Which envelope carries it is unverified: long press is newer than the
+ * official input docs, which stop at event 8. So it is accepted from either
+ * sysEvent or textEvent, and logged with its source so the first hardware run
+ * answers the question.
+ */
+function onLongPress(envelope: string, source: unknown): void {
+  console.log(`[input] long press via ${envelope}, source ${String(source ?? 'unknown')}`)
+  go(startNewRound({ state, history }))
+}
 
 const unsubscribe = bridge.onEvenHubEvent((event) => {
   // Scroll gestures arrive on textEvent (1 = up, 2 = down). Clicks, double
   // clicks and every lifecycle event arrive on sysEvent - never the reverse.
   if (event.textEvent) {
     const type = event.textEvent.eventType ?? 0
+    if (type === OsEventTypeList.LONG_PRESS_EVENT) {
+      onLongPress('textEvent', undefined)
+      return
+    }
+    if (type === OsEventTypeList.LONG_PRESS_RELEASE_EVENT) return
     const delta =
       type === OsEventTypeList.SCROLL_TOP_EVENT
         ? -1
@@ -234,15 +285,31 @@ const unsubscribe = bridge.onEvenHubEvent((event) => {
   const type = event.sysEvent.eventType ?? OsEventTypeList.CLICK_EVENT
 
   switch (type) {
-    case OsEventTypeList.DOUBLE_CLICK_EVENT:
-      // Show the system exit dialog. Do NOT clean up here - the user can still
-      // cancel, and an app on screen with no listener is unusable.
-      bridgeCall('shutDownPageContainer', () => bridge.shutDownPageContainer(1))
+    case OsEventTypeList.DOUBLE_CLICK_EVENT: {
+      // Back. The glasses reserve tap-and-hold for their own exit dialog, which
+      // frees double-tap. Only when there is nowhere left to go back to does it
+      // fall through to the exit dialog - still cancellable, and a safety net
+      // should the system gesture ever fail to reach the app. Do NOT clean up
+      // here; that belongs to the exit events below.
+      const outcome = back({ state, history })
+      if (outcome.kind === 'exit') {
+        bridgeCall('shutDownPageContainer', () => bridge.shutDownPageContainer(1))
+      } else {
+        go(outcome.nav)
+      }
+      return
+    }
+
+    case OsEventTypeList.LONG_PRESS_EVENT:
+      onLongPress('sysEvent', event.sysEvent.eventSource)
+      return
+
+    case OsEventTypeList.LONG_PRESS_RELEASE_EVENT:
       return
 
     case OsEventTypeList.CLICK_EVENT: {
       const before = state.phase
-      advance(click(state))
+      go(forward({ state, history }, click(state)))
       if (before === 'setup') {
         bridgeCall('setLocalStorage', () => bridge.setLocalStorage(PLAYERS_KEY, String(state.players)))
       } else if (before === 'style') {

@@ -20,7 +20,9 @@ import {
   selectedOption,
 } from './state.ts'
 
-const FOOTER = 'scroll · click · dbl-tap exits'
+// Double-tap is back. Tap-and-hold is the glasses' own exit dialog, and a long
+// press starts a new round from anywhere.
+const FOOTER = 'scroll · click · dbl-tap back'
 
 /** At or above this win rate you are the favourite, so outs stop being useful. */
 const AHEAD_THRESHOLD = 0.5
