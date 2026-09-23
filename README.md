@@ -35,3 +35,8 @@ Produces an `.ehpk` file.
 
 - Add containers, input handling, lifecycle events — see the `everything-evenhub` skill suite.
 - Pick another template if you need microphone/STT (`asr`), image display (`image`), or long-form reading (`text-heavy`).
+
+## License
+
+[PolyForm Noncommercial 1.0.0](LICENSE.md): free for personal, hobby, research and other
+noncommercial use; commercial use is not permitted.
