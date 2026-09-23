@@ -18,6 +18,10 @@ scroll players · click turn
 *A real result screen, rendered by the app's own code. On the flop the Normal range has
 narrowed from 20% to about 12% of hands.*
 
+## Install
+
+Find **Poker Odds** in Even Hub in the Even app, and install it onto your G2 glasses.
+
 ## What it does
 
 - **Win and tie percentage** from 25,000 Monte Carlo showdowns, recomputed on every street
@@ -68,46 +72,6 @@ ranks at the textbook frequency of each category.
 **The number is only as good as its assumptions.** Against *Any two* it's the textbook
 random-hands equity. The range styles are a model of how people play, tuned on published
 tracking-software statistics, not a read on the actual players at your table.
-
-## Run it
-
-Requires Node 20.19+ (Vite 8).
-
-```sh
-npm install
-npm run dev          # Vite on :5173, bound to the LAN
-npm run simulate     # Even Hub simulator, if you don't have glasses to hand
-npm test             # evaluator, equity, folding, ranges, layout, navigation
-```
-
-**On the glasses:** with the phone on the same network, run
-`npx evenhub qr --url http://<your-pc-ip>:5173` and scan the code with the Even app. Saved
-changes hot-reload onto the glasses.
-
-**To package** an `.ehpk` for Even Hub:
-
-```sh
-npm run build
-npx evenhub pack app.json dist --sdk-ver 0.0.14
-```
-
-Pass `--sdk-ver`: without it the CLI stamps the minimum Even app version from the newest
-published SDK rather than the one this was built against.
-
-## Project layout
-
-| Path | What it is |
-|---|---|
-| `src/evaluator.ts` | Seven-card hand evaluator and hand names |
-| `src/equity.ts` | Monte Carlo equity, outs, rule of 4 and 2 |
-| `src/ranges.ts` | Opponent styles and street-by-street range narrowing |
-| `src/rankings.ts` | The 169 starting-hand classes, ranked by this evaluator (generated) |
-| `src/state.ts` | App state and transitions, independent of the SDK |
-| `src/nav.ts` | Back-navigation history |
-| `src/ui.ts` | Every screen's text |
-| `src/main.ts` | SDK wiring: page setup, input, chunked simulation |
-| `scripts/` | Analysis tools, e.g. `build-rankings.ts` regenerates `rankings.ts` |
-| `test/` | Unit tests, plus `drive-hand.sh`, which plays a full hand in the simulator |
 
 ## Fair play
 
